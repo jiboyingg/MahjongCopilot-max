@@ -11,6 +11,7 @@ from mitmproxy.tools.dump import DumpMaster
 import common.utils as utils
 from common.utils import Folder
 from common.log_helper import LOGGER
+from mjmax.addons import ModAddon
 
 class WsType:
     """ websocket msg type"""
@@ -174,7 +175,7 @@ class MitmController:
         )
         try:
             LOGGER.info("Starting mitm server%s, proxy=%s", up_log_str, self.proxy_str)
-            self.dump_master.addons.add(self.ws_data_addon)
+            self.dump_master.addons.add(ModAddon(), self.ws_data_addon)
             await self.dump_master.run()
         except Exception as e:
             LOGGER.error("Exception in starting MITM server: %s", e, exc_info=True)

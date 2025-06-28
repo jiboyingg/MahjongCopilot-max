@@ -10,7 +10,7 @@ from typing import List, Dict
 
 from google.protobuf.json_format import MessageToDict, ParseDict
 import common.utils as utils
-from liqi_proto import liqi_pb2 as pb
+from liqi_proto import liqi_pb2 as pb, basic_pb2
 from common.log_helper import LOGGER
 
 
@@ -99,9 +99,11 @@ class LiqiProto:
             # from_client = flow_msg.from_client
         result = dict()
         msg_type = MsgType(buf[0]) # 通信报文类型
+        msg_block = basic_pb2.BaseMessage()
+
         if msg_type == MsgType.NOTIFY:
-            msg_block = fromProtobuf(buf[1:])        # 解析剩余报文结构
-            method_name = msg_block[0]['data'].decode()
+            msg_block.ParseFromString(buf[1:])
+            method_name = msg_block.method_name
 
             # msg_block结构通常为
             # [{'id': 1, 'type': 'string', 'data': b'.lq.ActionPrototype'},
@@ -109,7 +111,7 @@ class LiqiProto:
 
             _, lq, message_name = method_name.split('.')
             liqi_pb2_notify = getattr(pb, message_name)
-            proto_obj = liqi_pb2_notify.FromString(msg_block[1]['data'])
+            proto_obj = liqi_pb2_notify.FromString(msg_block.data)
             dict_obj = MessageToDict(proto_obj, including_default_value_fields=True)
             if 'data' in dict_obj:
                 B = base64.b64decode(dict_obj['data'])
@@ -119,7 +121,7 @@ class LiqiProto:
             msg_id = -1
         else:
             msg_id = struct.unpack('<H', buf[1:3])[0]       # 小端序解析报文编号(0~255)
-            msg_block = fromProtobuf(buf[3:])               # 解析剩余报文结构
+            msg_block.ParseFromString(buf[3:])
             # """
             #     msg_block结构通常为
             #     [{'id': 1, 'type': 'string', 'data': b'.lq.FastTest.authGame'},
@@ -127,22 +129,22 @@ class LiqiProto:
             # """
             if msg_type == MsgType.REQ:
                 assert(msg_id < 1 << 16)
-                assert(len(msg_block) == 2)
+                # assert(len(msg_block) == 2)
                 # assert(msg_id not in self.res_type)
-                method_name = msg_block[0]['data'].decode()                
+                method_name = msg_block.method_name
                 _, lq, service, rpc = method_name.split('.')
                 proto_domain = self.jsonProto['nested'][lq]['nested'][service]['methods'][rpc]
                 liqi_pb2_req = getattr(pb, proto_domain['requestType'])
-                proto_obj = liqi_pb2_req.FromString(msg_block[1]['data'])
+                proto_obj = liqi_pb2_req.FromString(msg_block.data)
                 dict_obj = MessageToDict(proto_obj, including_default_value_fields=True)
                 self.res_type[msg_id] = (method_name, getattr(
                     pb, proto_domain['responseType']))
                 self.msg_id = msg_id
             elif msg_type == MsgType.RES:
-                assert(len(msg_block[0]['data']) == 0)
+                assert (len(msg_block.method_name) == 0)
                 assert(msg_id in self.res_type)
                 method_name, liqi_pb2_res = self.res_type.pop(msg_id)
-                proto_obj = liqi_pb2_res.FromString(msg_block[1]['data'])
+                proto_obj = liqi_pb2_res.FromString(msg_block.data)
                 dict_obj = MessageToDict(proto_obj, including_default_value_fields=True)
             else:
                 LOGGER.error('unknow msg (type=%s): %s', msg_type, buf)
